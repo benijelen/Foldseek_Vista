@@ -1,0 +1,191 @@
+python3 /home1/10930/bjelen/run_esmfold_benchmark_infer_pdb.py   --fasta /home1/10930/bjelen/GB4-5258-C15-3_Bin578.1L.faa   --outdir /home1/10930/bjelen/esmfold_out_ALL
+
+7663 sequences in MAG
+167 > 1024aa (too long to fold)
+
+
+python3 filter_by_pLDDT_NEW.py 
+(ran about 1 minute)
+
+4458 out of 7496 were deemed "high conf" - they contained a section of 33aa or longer with pLDDT above 80
+
+#Make Dedicated Foldseek Directory
+mkdir foldseek_Bin578_AFSP
+
+#Build query database from within foldseek_Bin578_AFSP   (must not be on login node!! use compute node)
+foldseek createdb \
+    /home1/10930/bjelen/esmfold_out_ALL/high_conf \
+    GB4_Bin578_structDB
+
+
+
+foldseek align \
+    foldseek_Bin578_AFSP/GB4_Bin578_structDB \
+    $WORK/foldseek_dbs/afdb_swissprot \
+    foldseek_Bin578_AFSP/GB4_Bin578_vs_afsp \
+    foldseek_Bin578_AFSP/GB4_Bin578_vs_afsp_aln \
+    -a
+
+
+foldseek convertalis \
+    foldseek_Bin578_AFSP/GB4_Bin578_structDB \
+    $WORK/foldseek_dbs/afdb_swissprot \
+    foldseek_Bin578_AFSP/GB4_Bin578_vs_afsp_aln \
+    GB4_Bin578_vs_afsp.m8 \
+    --format-output "query,target,alntmscore,qcov,tcov,evalue,bits,qlen,tlen"
+
+
+ran TopTM.sh to get best TM hit per structure --- e.g. ~/TopTM.sh GB4_Bin578_vs_afsp.m8
+outputs GB4_Bin578_vs_afsp_bestHit.m8
+
+
+
+
+ran TMconfidence.sh on GB4_Bin578_vs_afsp_bestHit.m8
+outputs:  GB4_Bin578_vs_afsp_bestHit_struct_confidence.tsv
+
+
+
+
+
+ran uniprotExtract.sh GB4_Bin578_vs_afsp_bestHit.m8
+outputs: GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map.tsv
+
+
+
+Downloaded the Swissprot Dat file:
+from inside /work/10930/bjelen/vista/data/uniprot/Swissprot
+wget https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.dat.gz
+gunzip uniprot_sprot.dat.gz
+uniprot_sprot.dat
+
+
+ran extract_uniprot_ids.sh GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map.tsv
+outputs: GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_uniprot_ids.txt
+
+ran
+python3 parse_uniprot_subset.py \
+  -i GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_uniprot_ids.txt \
+  -d uniprot_sprot.dat
+outputs:  GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_uniprot_ids_uniprot_subset.tsv
+
+
+ran bash query_swiss_confidence.sh
+outputs: GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_with_conf_and_swissprot.tsv
+THIS IS THE FILE WITH STRUCTURE-DERIVED ANNOTATION INFO (from AF_Swissprot)
+
+NOW WE ADD THE SEQUENCE BASED (interproscan) IPR IDs for COMPARISON
+
+bash collapse_ipr_from_interproscan.sh /home1/10930/bjelen/GB4-5258-C15-3_Bin578.1L.faa.tsv
+Wrote:
+  GB4-5258-C15-3_Bin578.1L.faa_seq_ipr_pairs.tsv
+  GB4-5258-C15-3_Bin578.1L.faa_seq_ipr_ids.tsv
+
+bash join_seq_ipr_to_struct_table.sh \
+  GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_with_conf_and_swissprot.tsv \
+  GB4-5258-C15-3_Bin578.1L.faa_seq_ipr_ids.tsv
+output:   GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_with_conf_and_swissprot_plus_seqIPR.tsv
+
+REGEX FOR BASIC STATS ON GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_with_conf_and_swissprot_plus_seqIPR.tsv
+awk -F'\t' '
+{
+  tier=$3
+  hasSeq=($(NF)!="" ? "has_seqIPR" : "no_seqIPR")
+  key=tier"\t"hasSeq
+  c[key]++
+}
+END{for(k in c) print c[k], k}
+' GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_with_conf_and_swissprot_plus_seqIPR.tsv \
+| sort -nr
+
+
+
+NOW WE ADD THE SEQUENCE BASED (interproscan) IPR IDs for COMPARISON (NEW)
+ran extract_seq_annotation_summary.sh GB4-5258-C15-3_Bin578.1L.faa.tsv
+outputs:  GB4-5258-C15-3_Bin578.1L.faa_seq_annotation_summary.tsv
+
+
+extract_full_seq_annotation_from_interproscan.sh GB4-5258-C15-3_Bin578.1L.faa GB4-5258-C15-3_Bin578.1L.faa.tsv
+(2 files as input, the original .faa and the interproscan.tsv)
+Wrote: GB4-5258-C15-3_Bin578.1L_full_seq_annotation.tsv
+
+MASTER JOINING:
+
+sort -k1,1 GB4-5258-C15-3_Bin578.1L_full_seq_annotation.tsv \
+  > seq_full.sorted.tsv
+
+sort -k1,1 GB4_Bin578_vs_afsp_bestHit_AF_uniprot_map_with_conf_and_swissprot.tsv \
+  > struct.sorted.tsv
+
+join -t $'\t' -a 1 -e "" \
+  -o '1.1,1.2,1.3,1.4,1.5,2.2,2.3,2.4,2.5,2.6,2.7,2.8,2.9' \
+  seq_full.sorted.tsv struct.sorted.tsv \
+  > Bin578_master_seq_plus_struct.tsv
+
+
+ran classifier.sh
+input Bin578_master_seq_plus_struct.tsv
+output Bin578_master_classified.tsv       
+
+ADD HEADER:
+{ 
+  echo -e "protein_id\tn_seqIPR\thas_seqSignature\thas_seqGO\tseqIPR_list\tuniprot_besthit\tconf_tier\talntmscore\ttcov\tswissprot_name\tec\tgo_list\tstructIPR_list\thas_struct\thas_structIPR\tannotation_class"
+  cat Bin578_master_classified.tsv
+} > Bin578_master_classified.with_header.tsv
+mv Bin578_master_classified.with_header.tsv Bin578_master_classified.tsv
+
+
+
+
+_______________OLD__________________________-
+
+ran bash join_uniprotIDs_swiss.sh 
+output: Bin578_query_swissprot.tsv
+
+ran join_interpro.sh
+output: Bin578_query_seq_vs_struct.tsv
+
+ran python3 ipr_overlap_stats.py
+#should print stats on MAG sequence vs. structure IPRdomain comparison
+
+login2.vista(812)$ python3 ipr_overlap_stats.py
+Total queries: 3440
+  both_nonempty: 2082
+    with_overlap: 1550
+    disjoint: 532
+  seq_only: 24
+  struct_only: 1274
+  both_empty: 60
+
+
+
+
+login2.vista(766)$ # Strong fold-level matches
+awk '$3 >= 0.5 {print $1}' GB4_Bin578_vs_afsp_bestHit.m8 | wc -l
+
+# Strong fold-level + decent coverage
+awk '$3 >= 0.5 && $4 >= 0.3 {print $1}' GB4_Bin578_vs_afsp_bestHit.m8 | wc -l
+
+# Domain-only strong matches
+awk '$3 >= 0.5 && $4 < 0.3 {print $1}' GB4_Bin578_vs_afsp_bestHit.m8 | wc -l
+
+# Likely novel / no good structural hit
+awk '$3 < 0.35 {print $1}' GB4_Bin578_vs_afsp_bestHit.m8 | wc -l
+1231
+366
+865
+1735
+
+
+“Of the 3,440 high-confidence predicted structures, 1,231 (35.8%) exhibited strong structural similarity to known SwissProt proteins (TM-score ≥ 0.5), including 366 (10.6%) with fold-level coverage. In contrast, 1,735 proteins (50.4%) lacked any reliable structural homologs (TM-score < 0.35), indicating substantial unexplored structural novelty.”
+
+A large fraction of proteins in a single Guaymas Basin MAG either have recoverable fold-level homology missed by sequence methods, or represent structurally novel protein space.
+
+
+
+#Run from Directory where database is built:
+foldseek search     GB4_Bin578_structDB     $WORK/foldseek_dbs/afdb_swissprot     GB4_Bin578_vs_afsp     ./tmp_GB4_Bin578_vs_afsp     --threads 32     --alignment-mode 3
+
+#ran extract_seq_ipr.sh on GB4-5258-C15-3_Bin578.1L.faa.tsv  (interproscan file)
+GB4-5258-C15-3_Bin578.1L.faa.seq_ipr_pairs.tsv
+GB4-5258-C15-3_Bin578.1L.faa.seq_ipr_ids.tsv     = collapsed IPR IDs per query
