@@ -1,0 +1,11 @@
+TDB=/work/10930/bjelen/vista/foldseek_dbs/afdb_swissprot
+
+head -n 1 "${TDB}.index"
+
+for component in "$TDB" "${TDB}_ss" "${TDB}_ca" "${TDB}_h"; do
+    if [ -r "$component" ]; then
+        echo "Readable: $component"
+    else
+        echo "Cannot read: $component"
+    fi
+done
