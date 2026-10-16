@@ -3,6 +3,10 @@ python3 /home1/10930/bjelen/run_esmfold_benchmark_infer_pdb.py   --fasta /home1/
 7663 sequences in MAG
 167 > 1024aa (too long to fold)
 
+use compute node
+use compute node
+use compute node!!!
+
 
 python3 filter_by_pLDDT_NEW.py 
 (ran about 1 minute)
